@@ -53,11 +53,13 @@ export default function VideoTestPage() {
 
   // URL에서 미팅 ID 확인
   useEffect(() => {
-    const queryParams = new URLSearchParams(window.location.search);
-    const meetingIdFromURL = queryParams.get("meetingId");
+    if (typeof window !== "undefined") {
+      const queryParams = new URLSearchParams(window.location.search);
+      const meetingIdFromURL = queryParams.get("meetingId");
 
-    if (meetingIdFromURL) {
-      setJoinMeetingId(meetingIdFromURL);
+      if (meetingIdFromURL) {
+        setJoinMeetingId(meetingIdFromURL);
+      }
     }
   }, []);
 
@@ -91,9 +93,11 @@ export default function VideoTestPage() {
       setMeetingId(roomId);
 
       // 생성된 미팅 ID를 URL에 추가
-      const url = new URL(window.location.href);
-      url.searchParams.set("meetingId", roomId);
-      window.history.pushState({}, "", url);
+      if (typeof window !== "undefined") {
+        const url = new URL(window.location.href);
+        url.searchParams.set("meetingId", roomId);
+        window.history.pushState({}, "", url);
+      }
 
       setJoinMeetingId(roomId);
       setShowMeeting(true);
@@ -120,9 +124,11 @@ export default function VideoTestPage() {
     setMeetingId(joinMeetingId);
 
     // 참여한 미팅 ID를 URL에 추가
-    const url = new URL(window.location.href);
-    url.searchParams.set("meetingId", joinMeetingId);
-    window.history.pushState({}, "", url);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("meetingId", joinMeetingId);
+      window.history.pushState({}, "", url);
+    }
 
     setShowMeeting(true);
   };
@@ -132,36 +138,42 @@ export default function VideoTestPage() {
     setShowMeeting(false);
 
     // URL에서 미팅 ID 제거
-    const url = new URL(window.location.href);
-    url.searchParams.delete("meetingId");
-    window.history.pushState({}, "", url);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("meetingId");
+      window.history.pushState({}, "", url);
+    }
   };
 
   // 미팅 ID 복사
   const copyMeetingId = () => {
-    navigator.clipboard
-      .writeText(meetingId)
-      .then(() => {
-        alert("미팅 ID가 클립보드에 복사되었습니다.");
-      })
-      .catch((err) => {
-        console.error("클립보드 복사 실패:", err);
-        alert("미팅 ID 복사에 실패했습니다.");
-      });
+    if (typeof navigator !== "undefined") {
+      navigator.clipboard
+        .writeText(meetingId)
+        .then(() => {
+          alert("미팅 ID가 클립보드에 복사되었습니다.");
+        })
+        .catch((err) => {
+          console.error("클립보드 복사 실패:", err);
+          alert("미팅 ID 복사에 실패했습니다.");
+        });
+    }
   };
 
   // 미팅 URL 복사
   const copyMeetingUrl = () => {
-    const url = new URL(window.location.href);
-    navigator.clipboard
-      .writeText(url.toString())
-      .then(() => {
-        alert("미팅 URL이 클립보드에 복사되었습니다.");
-      })
-      .catch((err) => {
-        console.error("클립보드 복사 실패:", err);
-        alert("미팅 URL 복사에 실패했습니다.");
-      });
+    if (typeof window !== "undefined" && typeof navigator !== "undefined") {
+      const url = new URL(window.location.href);
+      navigator.clipboard
+        .writeText(url.toString())
+        .then(() => {
+          alert("미팅 URL이 클립보드에 복사되었습니다.");
+        })
+        .catch((err) => {
+          console.error("클립보드 복사 실패:", err);
+          alert("미팅 URL 복사에 실패했습니다.");
+        });
+    }
   };
 
   if (!token && !error) {
