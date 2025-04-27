@@ -10,12 +10,17 @@ import {
 import { Button } from "./ui/button";
 
 // 비디오 컴포넌트 - 각 참가자의 비디오 표시
+// 비디오 컴포넌트 - 각 참가자의 비디오 표시
+// 비디오 컴포넌트 - 각 참가자의 비디오 표시
 const ParticipantView = ({ participantId }: { participantId: string }) => {
   const { webcamStream, micStream, webcamOn, micOn, displayName, isLocal } =
     useParticipant(participantId);
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const [videoLoaded, setVideoLoaded] = useState(false);
+  const [audioLevel, setAudioLevel] = useState(0);
+  const audioAnalyserRef = useRef<AnalyserNode | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
 
   // 웹캠 스트림 처리
   const webcamMediaStream = useMemo(() => {
@@ -79,6 +84,59 @@ const ParticipantView = ({ participantId }: { participantId: string }) => {
       }
     };
   }, [webcamMediaStream]);
+
+  // 오디오 레벨 분석 설정
+  useEffect(() => {
+    if (!micOn || !micMediaStream) {
+      setAudioLevel(0);
+      if (audioAnalyserRef.current) {
+        audioAnalyserRef.current = null;
+      }
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+      return;
+    }
+
+    const audioContext = new AudioContext();
+    const analyser = audioContext.createAnalyser();
+    analyser.fftSize = 256;
+    const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+    const source = audioContext.createMediaStreamSource(micMediaStream);
+    source.connect(analyser);
+
+    audioAnalyserRef.current = analyser;
+
+    const updateAudioLevel = () => {
+      if (!audioAnalyserRef.current) return;
+
+      audioAnalyserRef.current.getByteFrequencyData(dataArray);
+
+      // 음량 평균값 계산
+      let sum = 0;
+      for (let i = 0; i < dataArray.length; i++) {
+        sum += dataArray[i];
+      }
+      const average = sum / dataArray.length;
+
+      // 0-100 범위로 정규화
+      const normalizedLevel = Math.min(100, Math.max(0, (average * 100) / 256));
+      setAudioLevel(normalizedLevel);
+
+      animationFrameRef.current = requestAnimationFrame(updateAudioLevel);
+    };
+
+    updateAudioLevel();
+
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+      audioContext.close();
+    };
+  }, [micMediaStream, micOn]);
 
   // 오디오 요소에 스트림 연결
   useEffect(() => {
@@ -149,6 +207,18 @@ const ParticipantView = ({ participantId }: { participantId: string }) => {
         {isLocal && <span className="mr-1 text-blue-300">나</span>}
         <span>{displayName || "사용자"}</span>
         <span className="ml-2">{micOn ? "🎤" : "🔇"}</span>
+
+        {/* 오디오 레벨 표시기 */}
+        {micOn && (
+          <div className="ml-2 flex items-center">
+            <div className="w-16 bg-gray-700 h-2 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-green-500 rounded-full"
+                style={{ width: `${audioLevel}%` }}
+              ></div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -285,7 +355,7 @@ const VideoChat = ({
   });
 
   return (
-    <div className="w-full max-w-4xl mx-auto">
+    <div className="w-full mx-auto">
       {connectionError ? (
         <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-4">
           <div className="flex flex-col">
