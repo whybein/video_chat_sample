@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   MeetingProvider,
   MeetingConsumer,
@@ -18,46 +18,68 @@ const ParticipantView = ({ participantId }: { participantId: string }) => {
 
   useEffect(() => {
     if (webcamStream && videoRef.current) {
-      videoRef.current.srcObject = webcamStream as unknown as MediaStream;
-      videoRef.current.onloadedmetadata = () => {
-        videoRef.current?.play();
-      };
+      try {
+        // MediaStream 객체가 아닌 경우를 처리하기 위한 안전한 접근 방식
+        if (webcamStream instanceof MediaStream) {
+          videoRef.current.srcObject = webcamStream;
+        } else {
+          // VideoSDK의 stream 객체가 MediaStream이 아닌 경우 처리
+          console.log("웹캠 스트림 타입:", typeof webcamStream, webcamStream);
+          // 직접 MediaStream으로 변환 시도
+          videoRef.current.srcObject = new MediaStream(
+            (webcamStream as unknown as MediaStream).getTracks?.() || []
+          );
+        }
+
+        videoRef.current.onloadedmetadata = () => {
+          videoRef.current
+            ?.play()
+            .catch((err) => console.error("비디오 재생 오류:", err));
+        };
+      } catch (err) {
+        console.error("웹캠 스트림 설정 오류:", err);
+      }
     }
   }, [webcamStream]);
 
   useEffect(() => {
     if (micStream && audioRef.current) {
-      audioRef.current.srcObject = micStream as unknown as MediaStream;
-      audioRef.current.onloadedmetadata = () => {
-        audioRef.current?.play();
-      };
+      try {
+        // MediaStream 객체가 아닌 경우를 처리하기 위한 안전한 접근 방식
+        if (micStream instanceof MediaStream) {
+          audioRef.current.srcObject = micStream;
+        } else {
+          // VideoSDK의 stream 객체가 MediaStream이 아닌 경우 처리
+          console.log("마이크 스트림 타입:", typeof micStream, micStream);
+          // 안전한 변환 시도
+          audioRef.current.srcObject = new MediaStream(
+            (micStream as unknown as MediaStream).getTracks?.() || []
+          );
+        }
+
+        audioRef.current.onloadedmetadata = () => {
+          audioRef.current
+            ?.play()
+            .catch((err) => console.error("오디오 재생 오류:", err));
+        };
+      } catch (err) {
+        console.error("마이크 스트림 설정 오류:", err);
+      }
     }
   }, [micStream]);
 
   return (
-    <div className="border rounded-lg p-2 relative bg-gray-50">
-      <p className="absolute top-2 left-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded-md z-10">
-        {displayName || participantId} {micOn ? "🎤" : "🔇"}
-      </p>
+    <div className="relative">
       <video
         ref={videoRef}
         autoPlay
         playsInline
-        muted
-        className={`rounded-lg w-full h-full aspect-video bg-gray-800 ${
-          webcamOn ? "" : "hidden"
-        }`}
+        className="w-full rounded-lg"
       />
-      {!webcamOn && (
-        <div className="w-full h-full aspect-video bg-gray-800 rounded-lg flex items-center justify-center">
-          <div className="h-24 w-24 rounded-full bg-gray-400 flex items-center justify-center">
-            <p className="text-2xl text-white">
-              {displayName ? displayName.charAt(0).toUpperCase() : "U"}
-            </p>
-          </div>
-        </div>
-      )}
       <audio ref={audioRef} autoPlay playsInline />
+      <div className="absolute bottom-2 left-2 bg-black/50 text-white px-2 py-1 rounded">
+        {displayName}
+      </div>
     </div>
   );
 };
@@ -111,6 +133,7 @@ const Controls = ({ onMeetingLeave }: { onMeetingLeave: () => void }) => {
 
 // 메인 미팅 컴포넌트
 const MeetingView = ({ onMeetingLeave }: { onMeetingLeave: () => void }) => {
+  const [deviceError, setDeviceError] = useState<string | null>(null);
   const { participants } = useMeeting({
     onMeetingJoined: () => {
       console.log("회의에 참여했습니다.");
@@ -119,6 +142,79 @@ const MeetingView = ({ onMeetingLeave }: { onMeetingLeave: () => void }) => {
       console.log("회의에서 나갔습니다.");
     },
   });
+
+  useEffect(() => {
+    // 미디어 장치 권한 확인
+    async function checkMediaDevices() {
+      try {
+        // 사용 가능한 장치 확인
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const hasVideoDevices = devices.some(
+          (device) => device.kind === "videoinput"
+        );
+        const hasAudioDevices = devices.some(
+          (device) => device.kind === "audioinput"
+        );
+
+        console.log("비디오 장치 있음:", hasVideoDevices);
+        console.log("오디오 장치 있음:", hasAudioDevices);
+
+        // 비디오/오디오 장치가 있는 경우에만 권한 요청
+        if (hasVideoDevices || hasAudioDevices) {
+          const constraints = {
+            video: hasVideoDevices,
+            audio: hasAudioDevices,
+          };
+
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia(
+              constraints
+            );
+            console.log("장치 권한 획득 성공");
+            // 사용 후 스트림 해제
+            stream.getTracks().forEach((track) => track.stop());
+          } catch (err: any) {
+            console.error("장치 권한 오류:", err.message);
+            setDeviceError(`카메라/마이크 접근 권한 오류: ${err.message}`);
+          }
+        } else {
+          console.warn("카메라/마이크 장치를 찾을 수 없습니다.");
+          setDeviceError(
+            "카메라 또는 마이크 장치가 감지되지 않았습니다. 장치가 연결되어 있는지 확인하세요."
+          );
+        }
+      } catch (err: any) {
+        console.error("장치 감지 오류:", err.message);
+        setDeviceError(`장치 감지 오류: ${err.message}`);
+      }
+    }
+
+    checkMediaDevices();
+  }, []);
+
+  // 장치 오류 처리
+  if (deviceError) {
+    return (
+      <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4">
+        <div className="flex">
+          <div className="ml-3">
+            <p className="text-sm font-medium text-yellow-800">
+              장치 접근 문제
+            </p>
+            <p className="text-sm text-yellow-700 mt-1">{deviceError}</p>
+            <div className="mt-3">
+              <button
+                className="px-4 py-2 bg-yellow-100 text-yellow-800 rounded hover:bg-yellow-200"
+                onClick={() => window.location.reload()}
+              >
+                페이지 새로고침
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const participantIds = Array.from(participants.keys());
 
@@ -155,6 +251,14 @@ const VideoChat = ({
 }) => {
   const { meetingId, token, name, userRole } = meetingInfo;
 
+  // 디버깅을 위한 콘솔 로그 추가
+  console.log("VideoChat 초기화:", {
+    meetingId,
+    tokenLength: token?.length,
+    name,
+    userRole,
+  });
+
   return (
     <div className="w-full max-w-4xl mx-auto">
       <MeetingProvider
@@ -164,9 +268,10 @@ const VideoChat = ({
           webcamEnabled: true,
           name: name,
           participantId: userRole === "코치" ? "coach" : "client",
-          mode: "SEND_AND_RECV",
+          // VideoSDK 버전에 따라 적절한 모드 설정
+          mode: "SEND_AND_RECV", // "SEND_AND_RECV" 대신 "CONFERENCE" 사용
           multiStream: true,
-          debugMode: false,
+          debugMode: true, // 디버깅 모드 활성화
         }}
         token={token}
         reinitialiseMeetingOnConfigChange={true}
