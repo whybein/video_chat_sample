@@ -439,12 +439,12 @@ const SessionPage = () => {
             >
               상담 세션 참여하기
             </Button>
-            <Button
+            {/* <Button
               onClick={() => router.push(`/session/${sessionId}?test=true`)}
               className="px-6 py-2 bg-gray-600 hover:bg-gray-700"
             >
               테스트 모드로 전환
-            </Button>
+            </Button> */}
           </div>
         </div>
       ) : (
