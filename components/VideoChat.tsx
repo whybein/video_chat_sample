@@ -389,7 +389,7 @@ const VideoChat = ({
         >
           <MeetingConsumer>
             {() => (
-              <div className="bg-white rounded-xl shadow-md p-6">
+              <div className="bg-white rounded-xl shadow-md p-5">
                 <MeetingView onMeetingLeave={onMeetingLeave} />
               </div>
             )}
