@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   MeetingProvider,
   MeetingConsumer,
@@ -11,74 +11,144 @@ import { Button } from "./ui/button";
 
 // 비디오 컴포넌트 - 각 참가자의 비디오 표시
 const ParticipantView = ({ participantId }: { participantId: string }) => {
-  const { webcamStream, micStream, webcamOn, micOn, displayName } =
+  const { webcamStream, micStream, webcamOn, micOn, displayName, isLocal } =
     useParticipant(participantId);
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const [videoLoaded, setVideoLoaded] = useState(false);
 
-  useEffect(() => {
-    if (webcamStream && videoRef.current) {
+  // 웹캠 스트림 처리
+  const webcamMediaStream = useMemo(() => {
+    if (webcamOn && webcamStream) {
       try {
-        // MediaStream 객체가 아닌 경우를 처리하기 위한 안전한 접근 방식
-        if (webcamStream instanceof MediaStream) {
-          videoRef.current.srcObject = webcamStream;
-        } else {
-          // VideoSDK의 stream 객체가 MediaStream이 아닌 경우 처리
-          console.log("웹캠 스트림 타입:", typeof webcamStream, webcamStream);
-          // 직접 MediaStream으로 변환 시도
-          videoRef.current.srcObject = new MediaStream(
-            (webcamStream as unknown as MediaStream).getTracks?.() || []
-          );
-        }
-
-        videoRef.current.onloadedmetadata = () => {
-          videoRef.current
-            ?.play()
-            .catch((err) => console.error("비디오 재생 오류:", err));
-        };
-      } catch (err) {
-        console.error("웹캠 스트림 설정 오류:", err);
+        const mediaStream = new MediaStream();
+        mediaStream.addTrack(webcamStream.track);
+        return mediaStream;
+      } catch (error) {
+        console.error("MediaStream 생성 오류:", error);
+        return null;
       }
     }
-  }, [webcamStream]);
+    return null;
+  }, [webcamStream, webcamOn]);
 
-  useEffect(() => {
-    if (micStream && audioRef.current) {
+  // 마이크 스트림 처리
+  const micMediaStream = useMemo(() => {
+    if (micOn && micStream) {
       try {
-        // MediaStream 객체가 아닌 경우를 처리하기 위한 안전한 접근 방식
-        if (micStream instanceof MediaStream) {
-          audioRef.current.srcObject = micStream;
-        } else {
-          // VideoSDK의 stream 객체가 MediaStream이 아닌 경우 처리
-          console.log("마이크 스트림 타입:", typeof micStream, micStream);
-          // 안전한 변환 시도
-          audioRef.current.srcObject = new MediaStream(
-            (micStream as unknown as MediaStream).getTracks?.() || []
-          );
-        }
-
-        audioRef.current.onloadedmetadata = () => {
-          audioRef.current
-            ?.play()
-            .catch((err) => console.error("오디오 재생 오류:", err));
-        };
-      } catch (err) {
-        console.error("마이크 스트림 설정 오류:", err);
+        const mediaStream = new MediaStream();
+        mediaStream.addTrack(micStream.track);
+        return mediaStream;
+      } catch (error) {
+        console.error("Audio MediaStream 생성 오류:", error);
+        return null;
       }
     }
-  }, [micStream]);
+    return null;
+  }, [micStream, micOn]);
+
+  // 비디오 요소에 스트림 연결
+  useEffect(() => {
+    if (videoRef.current && webcamMediaStream) {
+      videoRef.current.srcObject = webcamMediaStream;
+
+      const playVideo = () => {
+        videoRef.current
+          ?.play()
+          .then(() => {
+            setVideoLoaded(true);
+          })
+          .catch((err) => {
+            console.error("비디오 재생 오류:", err);
+          });
+      };
+
+      videoRef.current.onloadedmetadata = playVideo;
+
+      // 이미 메타데이터가 로드되어 있을 경우를 대비
+      if (videoRef.current.readyState >= 2) {
+        playVideo();
+      }
+    } else {
+      setVideoLoaded(false);
+    }
+
+    return () => {
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
+    };
+  }, [webcamMediaStream]);
+
+  // 오디오 요소에 스트림 연결
+  useEffect(() => {
+    if (audioRef.current && micMediaStream) {
+      audioRef.current.srcObject = micMediaStream;
+
+      audioRef.current.play().catch((err) => {
+        console.error("오디오 재생 오류:", err);
+      });
+    }
+
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.srcObject = null;
+      }
+    };
+  }, [micMediaStream]);
+
+  // 자신의 화면인지에 따라 다른 스타일 적용
+  const containerClassName = isLocal
+    ? "relative border-2 border-blue-500 rounded-lg"
+    : "relative border rounded-lg";
 
   return (
-    <div className="relative">
-      <video
-        ref={videoRef}
-        autoPlay
-        playsInline
-        className="w-full rounded-lg"
-      />
+    <div className={containerClassName}>
+      {/* 웹캠이 켜져 있을 때 */}
+      {webcamOn ? (
+        <>
+          {/* 비디오 요소 */}
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted={isLocal}
+            className={`w-full h-full object-cover aspect-video rounded-lg bg-gray-800 ${
+              videoLoaded ? "" : "hidden"
+            }`}
+          />
+
+          {/* 비디오 로딩 중일 때 */}
+          {!videoLoaded && (
+            <div className="w-full aspect-video bg-gray-800 rounded-lg flex items-center justify-center">
+              <div className="text-center">
+                <div className="animate-pulse h-16 w-16 mx-auto mb-2 bg-blue-400 rounded-full flex items-center justify-center">
+                  <span className="text-2xl">📹</span>
+                </div>
+                <p className="text-white">{displayName || "사용자"}</p>
+                <p className="text-gray-300 text-xs">카메라 연결 중...</p>
+              </div>
+            </div>
+          )}
+        </>
+      ) : (
+        // 웹캠이 꺼져 있을 때 아바타 표시
+        <div className="w-full aspect-video bg-gray-800 rounded-lg flex items-center justify-center">
+          <div className="h-24 w-24 rounded-full bg-gray-600 flex items-center justify-center">
+            <p className="text-2xl text-white">
+              {displayName ? displayName.charAt(0).toUpperCase() : "U"}
+            </p>
+          </div>
+        </div>
+      )}
+
       <audio ref={audioRef} autoPlay playsInline />
-      <div className="absolute bottom-2 left-2 bg-black/50 text-white px-2 py-1 rounded">
-        {displayName}
+
+      {/* 참가자 정보 표시 */}
+      <div className="absolute bottom-2 left-2 bg-black/50 text-white px-2 py-1 rounded flex items-center">
+        {isLocal && <span className="mr-1 text-blue-300">나</span>}
+        <span>{displayName || "사용자"}</span>
+        <span className="ml-2">{micOn ? "🎤" : "🔇"}</span>
       </div>
     </div>
   );
@@ -134,99 +204,54 @@ const Controls = ({ onMeetingLeave }: { onMeetingLeave: () => void }) => {
 // 메인 미팅 컴포넌트
 const MeetingView = ({ onMeetingLeave }: { onMeetingLeave: () => void }) => {
   const [deviceError, setDeviceError] = useState<string | null>(null);
-  const { participants } = useMeeting({
+  const { participants, localParticipant } = useMeeting({
     onMeetingJoined: () => {
       console.log("회의에 참여했습니다.");
     },
     onMeetingLeft: () => {
       console.log("회의에서 나갔습니다.");
     },
+    onError: (error: any) => {
+      console.error("VideoSDK 오류:", error);
+      // 심각한 오류만 표시
+      if (error.code === 4001 || error.code === 4002 || error.code === 4003) {
+        setDeviceError(`미팅 연결 오류: ${error.message || "알 수 없는 오류"}`);
+      }
+    },
   });
 
-  useEffect(() => {
-    // 미디어 장치 권한 확인
-    async function checkMediaDevices() {
-      try {
-        // 사용 가능한 장치 확인
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const hasVideoDevices = devices.some(
-          (device) => device.kind === "videoinput"
-        );
-        const hasAudioDevices = devices.some(
-          (device) => device.kind === "audioinput"
-        );
+  // 장치 권한 검사를 건너뛰고 VideoSDK에 위임합니다.
+  // 이렇게 하면 권한이 이미 있을 때 불필요한 권한 검사로 인한 오류를 방지할 수 있습니다.
 
-        console.log("비디오 장치 있음:", hasVideoDevices);
-        console.log("오디오 장치 있음:", hasAudioDevices);
-
-        // 비디오/오디오 장치가 있는 경우에만 권한 요청
-        if (hasVideoDevices || hasAudioDevices) {
-          const constraints = {
-            video: hasVideoDevices,
-            audio: hasAudioDevices,
-          };
-
-          try {
-            const stream = await navigator.mediaDevices.getUserMedia(
-              constraints
-            );
-            console.log("장치 권한 획득 성공");
-            // 사용 후 스트림 해제
-            stream.getTracks().forEach((track) => track.stop());
-          } catch (err: any) {
-            console.error("장치 권한 오류:", err.message);
-            setDeviceError(`카메라/마이크 접근 권한 오류: ${err.message}`);
-          }
-        } else {
-          console.warn("카메라/마이크 장치를 찾을 수 없습니다.");
-          setDeviceError(
-            "카메라 또는 마이크 장치가 감지되지 않았습니다. 장치가 연결되어 있는지 확인하세요."
-          );
-        }
-      } catch (err: any) {
-        console.error("장치 감지 오류:", err.message);
-        setDeviceError(`장치 감지 오류: ${err.message}`);
-      }
-    }
-
-    checkMediaDevices();
-  }, []);
-
-  // 장치 오류 처리
-  if (deviceError) {
-    return (
-      <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4">
-        <div className="flex">
-          <div className="ml-3">
-            <p className="text-sm font-medium text-yellow-800">
-              장치 접근 문제
-            </p>
-            <p className="text-sm text-yellow-700 mt-1">{deviceError}</p>
-            <div className="mt-3">
-              <button
-                className="px-4 py-2 bg-yellow-100 text-yellow-800 rounded hover:bg-yellow-200"
-                onClick={() => window.location.reload()}
-              >
-                페이지 새로고침
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
+  // 참가자 목록 준비 - 자신을 항상 첫 번째로 표시
   const participantIds = Array.from(participants.keys());
+
+  // 표시할 참가자 목록
+  const displayParticipants = localParticipant
+    ? [
+        localParticipant.id,
+        ...participantIds.filter((id) => id !== localParticipant.id),
+      ]
+    : participantIds;
 
   return (
     <div className="flex flex-col">
       <h3 className="text-xl font-medium mb-4">상담 세션</h3>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-        {participantIds.map((participantId) => (
-          <ParticipantView key={participantId} participantId={participantId} />
-        ))}
-      </div>
+      {displayParticipants.length === 0 ? (
+        <div className="flex justify-center items-center h-64 bg-gray-100 rounded-lg">
+          <p className="text-gray-500">연결 중입니다. 잠시만 기다려주세요...</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 min-h-[300px]">
+          {displayParticipants.map((participantId) => (
+            <ParticipantView
+              key={participantId}
+              participantId={participantId}
+            />
+          ))}
+        </div>
+      )}
 
       <Controls onMeetingLeave={onMeetingLeave} />
     </div>
@@ -250,8 +275,8 @@ const VideoChat = ({
   onMeetingLeave: () => void;
 }) => {
   const { meetingId, token, name, userRole } = meetingInfo;
+  const [connectionError, setConnectionError] = useState<string | null>(null);
 
-  // 디버깅을 위한 콘솔 로그 추가
   console.log("VideoChat 초기화:", {
     meetingId,
     tokenLength: token?.length,
@@ -261,30 +286,46 @@ const VideoChat = ({
 
   return (
     <div className="w-full max-w-4xl mx-auto">
-      <MeetingProvider
-        config={{
-          meetingId,
-          micEnabled: true,
-          webcamEnabled: true,
-          name: name,
-          participantId: userRole === "코치" ? "coach" : "client",
-          // VideoSDK 버전에 따라 적절한 모드 설정
-          mode: "SEND_AND_RECV", // "SEND_AND_RECV" 대신 "CONFERENCE" 사용
-          multiStream: true,
-          debugMode: true, // 디버깅 모드 활성화
-        }}
-        token={token}
-        reinitialiseMeetingOnConfigChange={true}
-        joinWithoutUserInteraction={true}
-      >
-        <MeetingConsumer>
-          {() => (
-            <div className="bg-white rounded-xl shadow-md p-6">
-              <MeetingView onMeetingLeave={onMeetingLeave} />
+      {connectionError ? (
+        <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-4">
+          <div className="flex flex-col">
+            <p className="text-base font-medium text-red-800">연결 오류</p>
+            <p className="text-sm text-red-700 mt-2">{connectionError}</p>
+            <div className="mt-4">
+              <button
+                className="px-4 py-2 bg-red-100 text-red-800 rounded hover:bg-red-200"
+                onClick={() => window.location.reload()}
+              >
+                다시 시도하기
+              </button>
             </div>
-          )}
-        </MeetingConsumer>
-      </MeetingProvider>
+          </div>
+        </div>
+      ) : (
+        <MeetingProvider
+          config={{
+            meetingId,
+            micEnabled: true,
+            webcamEnabled: true,
+            name: name,
+            participantId: userRole === "코치" ? "coach" : "client",
+            mode: "SEND_AND_RECV", // 공식 문서에 따른 권장 모드
+            multiStream: true,
+            debugMode: true,
+          }}
+          token={token}
+          reinitialiseMeetingOnConfigChange={true}
+          joinWithoutUserInteraction={true}
+        >
+          <MeetingConsumer>
+            {() => (
+              <div className="bg-white rounded-xl shadow-md p-6">
+                <MeetingView onMeetingLeave={onMeetingLeave} />
+              </div>
+            )}
+          </MeetingConsumer>
+        </MeetingProvider>
+      )}
     </div>
   );
 };
