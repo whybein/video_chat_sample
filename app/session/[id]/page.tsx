@@ -81,6 +81,7 @@ const fetchOrCreateMeeting = async (
       }
 
       const { roomId } = await response.json();
+      console.log("새 미팅 ID 생성됨:", roomId);
       return roomId;
     }
 
@@ -158,8 +159,16 @@ const SessionPage = () => {
       // VideoSDK 토큰 가져오기
       const token = await fetchVideoToken();
 
-      // 테스트 미팅 ID 생성
-      const meetingId = await fetchOrCreateMeeting(sessionId, token, true);
+      // URL에서 미팅 ID 파라미터 확인
+      const meetingIdParam = searchParams.get("meeting");
+
+      // 미팅 ID가 URL에 있으면 사용, 없으면 새로 생성
+      let meetingId;
+      if (meetingIdParam) {
+        meetingId = meetingIdParam;
+      } else {
+        meetingId = await fetchOrCreateMeeting(sessionId, token, true);
+      }
 
       // 미팅 정보 설정
       setMeetingInfo({
@@ -195,9 +204,16 @@ const SessionPage = () => {
 
   // 테스트 URL 복사
   const copyTestUrl = () => {
-    const url = `${window.location.origin}/session/${sessionId}?test=true&meeting=${meetingInfo.meetingId}`;
+    // 현재 URL이 이미 미팅 ID를 포함하고 있는지 확인
+    const url = new URL(window.location.href);
+
+    // 미팅 ID 파라미터가 없으면 추가
+    if (!url.searchParams.has("meeting")) {
+      url.searchParams.set("meeting", meetingInfo.meetingId);
+    }
+
     navigator.clipboard
-      .writeText(url)
+      .writeText(url.toString())
       .then(() => {
         setCopySuccess("URL이 클립보드에 복사되었습니다!");
         setTimeout(() => setCopySuccess(""), 3000);
@@ -380,6 +396,7 @@ const SessionPage = () => {
             <VideoChat
               meetingInfo={meetingInfo}
               onMeetingLeave={handleLeaveMeeting}
+              isTestMode={true} // 디버깅을 위한 테스트 모드 플래그 전달
             />
           </div>
         )}

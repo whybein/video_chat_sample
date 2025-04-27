@@ -10,8 +10,6 @@ import {
 import { Button } from "./ui/button";
 
 // 비디오 컴포넌트 - 각 참가자의 비디오 표시
-// 비디오 컴포넌트 - 각 참가자의 비디오 표시
-// 비디오 컴포넌트 - 각 참가자의 비디오 표시
 const ParticipantView = ({ participantId }: { participantId: string }) => {
   const { webcamStream, micStream, webcamOn, micOn, displayName, isLocal } =
     useParticipant(participantId);
@@ -226,8 +224,9 @@ const ParticipantView = ({ participantId }: { participantId: string }) => {
 
 // 컨트롤 바 컴포넌트
 const Controls = ({ onMeetingLeave }: { onMeetingLeave: () => void }) => {
-  const { leave, toggleMic, toggleWebcam, meetingId, localParticipant } =
-    useMeeting();
+  const meeting = useMeeting();
+  const { leave, toggleMic, toggleWebcam, meetingId } = meeting;
+  const localParticipant = meeting.localParticipant;
 
   if (!localParticipant) {
     return null;
@@ -272,14 +271,28 @@ const Controls = ({ onMeetingLeave }: { onMeetingLeave: () => void }) => {
 };
 
 // 메인 미팅 컴포넌트
-const MeetingView = ({ onMeetingLeave }: { onMeetingLeave: () => void }) => {
+const MeetingView = ({
+  onMeetingLeave,
+  isTestMode,
+}: {
+  onMeetingLeave: () => void;
+  isTestMode?: boolean;
+}) => {
   const [deviceError, setDeviceError] = useState<string | null>(null);
-  const { participants, localParticipant } = useMeeting({
+
+  // MeetingProvider 내부에서만 useMeeting 훅 사용 가능
+  const meeting = useMeeting({
     onMeetingJoined: () => {
       console.log("회의에 참여했습니다.");
     },
     onMeetingLeft: () => {
       console.log("회의에서 나갔습니다.");
+    },
+    onParticipantJoined: (participant) => {
+      // 새 참가자 참여 시 로그 출력
+      if (isTestMode) {
+        console.log("새 참가자 참여:", participant.displayName);
+      }
     },
     onError: (error: any) => {
       console.error("VideoSDK 오류:", error);
@@ -290,8 +303,17 @@ const MeetingView = ({ onMeetingLeave }: { onMeetingLeave: () => void }) => {
     },
   });
 
-  // 장치 권한 검사를 건너뛰고 VideoSDK에 위임합니다.
-  // 이렇게 하면 권한이 이미 있을 때 불필요한 권한 검사로 인한 오류를 방지할 수 있습니다.
+  const { participants, localParticipant } = meeting;
+
+  // 디버깅 정보 출력
+  useEffect(() => {
+    if (isTestMode) {
+      // 참가자 정보 로깅
+      console.log("현재 참가자 ID 목록:", Array.from(participants.keys()));
+      console.log("로컬 참가자 ID:", localParticipant?.id);
+      console.log("총 참가자 수:", participants.size);
+    }
+  }, [participants, localParticipant, isTestMode]);
 
   // 참가자 목록 준비 - 자신을 항상 첫 번째로 표시
   const participantIds = Array.from(participants.keys());
@@ -307,6 +329,27 @@ const MeetingView = ({ onMeetingLeave }: { onMeetingLeave: () => void }) => {
   return (
     <div className="flex flex-col">
       <h3 className="text-xl font-medium mb-4">상담 세션</h3>
+
+      {deviceError && (
+        <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-4">
+          <div className="flex flex-col">
+            <p className="text-base font-medium text-red-800">장치 오류</p>
+            <p className="text-sm text-red-700 mt-2">{deviceError}</p>
+          </div>
+        </div>
+      )}
+
+      {isTestMode && (
+        <div className="bg-blue-50 border-l-4 border-blue-500 p-4 mb-4">
+          <div className="flex flex-col">
+            <p className="text-base font-medium text-blue-800">디버깅 정보</p>
+            <p className="text-sm text-blue-700 mt-2">
+              참가자 수: {participants.size} | 로컬 참가자:{" "}
+              {localParticipant?.displayName || "로딩 중..."}
+            </p>
+          </div>
+        </div>
+      )}
 
       {displayParticipants.length === 0 ? (
         <div className="flex justify-center items-center h-64 bg-gray-100 rounded-lg">
@@ -340,9 +383,11 @@ interface MeetingInfo {
 const VideoChat = ({
   meetingInfo,
   onMeetingLeave,
+  isTestMode,
 }: {
   meetingInfo: MeetingInfo;
   onMeetingLeave: () => void;
+  isTestMode: boolean;
 }) => {
   const { meetingId, token, name, userRole } = meetingInfo;
   const [connectionError, setConnectionError] = useState<string | null>(null);
@@ -379,7 +424,7 @@ const VideoChat = ({
             webcamEnabled: true,
             name: name,
             participantId: userRole === "코치" ? "coach" : "client",
-            mode: "SEND_AND_RECV", // 공식 문서에 따른 권장 모드
+            mode: "SEND_AND_RECV",
             multiStream: true,
             debugMode: true,
           }}
@@ -389,8 +434,11 @@ const VideoChat = ({
         >
           <MeetingConsumer>
             {() => (
-              <div className="bg-white rounded-xl shadow-md p-5">
-                <MeetingView onMeetingLeave={onMeetingLeave} />
+              <div className="bg-white rounded-xl shadow-md p-6">
+                <MeetingView
+                  onMeetingLeave={onMeetingLeave}
+                  isTestMode={isTestMode}
+                />
               </div>
             )}
           </MeetingConsumer>
