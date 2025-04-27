@@ -396,7 +396,7 @@ const SessionPage = () => {
             <VideoChat
               meetingInfo={meetingInfo}
               onMeetingLeave={handleLeaveMeeting}
-              isTestMode={true} // 디버깅을 위한 테스트 모드 플래그 전달
+              isTestMode={isTestMode} // 디버깅을 위한 테스트 모드 플래그 전달
             />
           </div>
         )}
@@ -452,6 +452,7 @@ const SessionPage = () => {
           <VideoChat
             meetingInfo={meetingInfo}
             onMeetingLeave={handleLeaveMeeting}
+            isTestMode={false}
           />
         )
       )}
