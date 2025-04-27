@@ -322,6 +322,7 @@ export default function VideoTestPage() {
                 userRole: userRole,
               }}
               onMeetingLeave={endMeeting}
+              isTestMode={true}
             />
           )}
         </div>
